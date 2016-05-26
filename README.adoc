@@ -1,0 +1,162 @@
+---
+tags: [spring-data, couchbase]
+projects: [spring-data-couchbase]
+---
+:toc:
+:icons: font
+:source-highlighter: prettify
+:project_id: gs-accessing-data-couchbase
+This guide walks you through the process of using http://projects.spring.io/spring-data-couchbase/[Spring Data Couchbase] to build an application that stores data in and retrieves it from http://www.couchbase.com/[Couchbase], a document-based database.
+:imagesdir: images
+
+== What you'll build
+
+You will store `Person` link:/understanding/POJO[POJOs] in a Couchbase database using Spring Data Couchbase.
+
+== What you'll need
+
+:java_version: 1.8
+include::https://raw.githubusercontent.com/spring-guides/getting-started-macros/master/prereq_editor_jdk_buildtools.adoc[]
+
+include::https://raw.githubusercontent.com/spring-guides/getting-started-macros/master/how_to_complete_this_guide.adoc[]
+
+
+include::https://raw.githubusercontent.com/spring-guides/getting-started-macros/master/hide-show-gradle.adoc[]
+
+include::https://raw.githubusercontent.com/spring-guides/getting-started-macros/master/hide-show-maven.adoc[]
+
+include::https://raw.githubusercontent.com/spring-guides/getting-started-macros/master/hide-show-sts.adoc[]
+
+[[initial]]
+== Install and launch Couchbase
+With your project set up, you can install and launch Couchbase.
+    
+For whatever operating system you are using, instructions and downloads can be found at  http://developer.couchbase.com/documentation/server/4.0/install/install-intro.html.
+
+After you install Couchbase, launch it. You should see a webpage opening in your default browser allowing you to setup Couchbase
+
+== Define a simple entity
+In this example, you store `Customer` objects.
+
+`src/main/java/hello/Customer.java`
+[source,java]
+----
+include::complete/src/main/java/hello/Customer.java[]
+----
+
+Here you have a `Customer` class with three attributes, `username`, `firstName`, and `lastName`. You also have a single constructor to populate the entities when creating a new instance.
+
+NOTE: In this guide, the typical getters and setters have been left out for brevity.
+
+`username` bears the @Id annotation. The field annotated with @Id will be used as Key of your document. 
+
+The other two properties, `firstName` and `lastName`, are left unannotated. It is assumed that they'll be mapped to fields that share the same name as the properties themselves.
+
+The convenient `toString()` method will print out the details about a customer.
+
+NOTE: Couchbase stores data in bucket. Spring Data Couchbase will map the class `Customer` into a JSON document and store it into the default bucket if not configured otherwise. The JSON document will have an aditional field called __type_. Type fields are always useful to filter the documents you store in a bucket.
+
+
+== Create simple queries
+Spring Data Couchbase focuses on storing data in Couchbase. It also inherits functionality from the Spring Data Commons project, such as the ability to derive queries. Essentially, you don't have to learn the query language of Couchbase; you can simply write a handful of methods and the queries are written for you.
+
+
+To see how this works, create a repository interface that queries `Customer` documents.
+
+`src/main/java/hello/CustomerRepository.java`
+[source,java]
+----
+include::complete/src/main/java/hello/CustomerRepository.java[]
+----
+    
+`CustomerRepository` extends the `CouchabseRepository` interface and plugs in the type of values and id it works with: `Customer` and `String`. Out-of-the-box, this interface comes with many operations, including standard CRUD operations (create-read-update-delete).
+
+You can define other queries as needed by simply declaring their method signature. In this case, you add `findByFirstName`, which essentially seeks documents of type `Customer` and finds the one that matches on `firstName`.
+
+You also have `findByLastName` to find a list of people by last name.
+
+In a typical Java application, you write a class that implements `CustomerRepository` and craft the queries yourself. What makes Spring Data Couchbase so useful is the fact that you don't have to create this implementation. Spring Data Couchbase creates it on the fly when you run the application.
+
+=== Create Indexes
+
+In Couchbase, every queries are backed by indexes. We have several type of indexes. N1QL indexes can be created automatically and are the one used by query derivation. The findAll and deleteAll method are still backed by View indexes that we need to create manually.
+
+To do so, open the Couchbase web UI, click on `Indexes`, than `View`, than `Create Development View`. View are determined based on the repository object. If you have a `Customer` repository, than you need to name your design document `dev_Customer` and the view `all`. Now Spring Data Couchbase knows how to pick up the right view when calling _findAll_ or _deleteAll_.
+
+Your view should only emit a value when the document is of type `Customer`. The code should look like 
+
+ function (doc, meta) {
+    if (doc._class == "hello.Customer") {
+      emit(meta.id, null);
+    }
+ }
+
+Don't forget to publish your view to production. Now let's wire this up and see what it looks like!
+
+== Create an Application class
+Here you create an Application class with all the components.
+
+`src/main/java/hello/Application.java`
+[source,java]
+----
+include::complete/src/main/java/hello/Application.java[]
+----
+
+`@SpringBootApplication` is a convenience annotation that adds all of the following:
+    
+- `@Configuration` tags the class as a source of bean definitions for the application context.
+- `@EnableAutoConfiguration` tells Spring Boot to start adding beans based on classpath settings, other beans, and various property settings.
+- Normally you would add `@EnableWebMvc` for a Spring MVC app, but Spring Boot adds it automatically when it sees **spring-webmvc** on the classpath. This flags the application as a web application and activates key behaviors such as setting up a `DispatcherServlet`.
+- `@ComponentScan` tells Spring to look for other components, configurations, and services in the the `hello` package, allowing it to find the `HelloController`.
+
+The `main()` method uses Spring Boot's `SpringApplication.run()` method to launch an application. Did you notice that there wasn't a single line of XML? No **web.xml** file either. This web application is 100% pure Java and you didn't have to deal with configuring any plumbing or infrastructure.
+
+Spring Boot will handle those repositories automatically as long as they are included
+in the same package (or a sub-package) of your `@SpringBootApplication` class. For more control over the
+registration process, you can use the `@EnableCouchbaseRepositories` annotation.
+
+Spring Data Couchbase uses the `CouchbaseTemplate` to execute the queries behind your `find*` methods. You can
+use the template yourself for more complex queries, but this guide doesn't cover that.
+
+`Application` includes a `main()` method that autowires an instance of `CustomerRepository`: Spring Data
+Couchbase dynamically creates a proxy and injects it there. We use the `CustomerRepository` through a few
+tests. First, it saves a handful of `Customer` objects, demonstrating the `save()` method and setting
+up some data to work with. Next, it calls `findAll()` to fetch all `Customer` objects from the database.
+Then it calls `findByFirstName()` to fetch a single `Customer` by her first name. Finally, it calls
+`findByLastName()` to find all customers whose last name is "Smith".
+
+Spring Boot needs to know at least one IP of your Couchbase nodes to automatically connect to it. This must be provided in your `application.properties` file so go ahead and create it:
+
+`src/main/resources/application.properties`
+[source,java]
+----
+include::complete/src/main/resources/application.properties[]
+----
+
+If you installed Couchbase as explained previously, it should be running locally on your machine so you should use _127.0.0.1_ as your IP.
+
+While you're at it, enable the automatic creation of indexes by setting `spring.data.couchbase.repositories.enabled` to _true_.
+
+include::https://raw.githubusercontent.com/spring-guides/getting-started-macros/master/build_an_executable_jar_mainhead.adoc[]
+include::https://raw.githubusercontent.com/spring-guides/getting-started-macros/master/build_an_executable_jar_with_both.adoc[]
+    
+    
+As our `Application` implements `CommandLineRunner`, the `run` method is invoked automatically when boot
+starts. You should see something like this (with other stuff like queries as well):
+....
+== Customers found with findAll():
+Customer[username=asmith, firstName='Alice', lastName='Smith']
+Customer[username=bsmith, firstName='Bob', lastName='Smith']
+
+== Customer found with findByFirstName('Alice'):
+Customer[username=asmith, firstName='Alice', lastName='Smith']
+== Customers found with findByLastName('Smith'):
+Customer[username=asmith, firstName='Alice', lastName='Smith']
+Customer[username=bsmith, firstName='Bob', lastName='Smith']
+....
+
+== Summary
+Congratulations! You set up a Couchbase server and wrote a simple application that uses Spring Data Couchbase to save objects to and fetch them from a database -- all without writing a concrete repository implementation.
+
+include::https://raw.githubusercontent.com/spring-guides/getting-started-macros/master/footer.adoc[]
+

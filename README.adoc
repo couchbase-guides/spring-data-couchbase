@@ -6,6 +6,9 @@ projects: [spring-data-couchbase]
 :icons: font
 :source-highlighter: prettify
 :project_id: gs-accessing-data-couchbase
+
+= Getting started with Couchbase and Spring Data Couchbase
+
 This guide walks you through the process of using http://projects.spring.io/spring-data-couchbase/[Spring Data Couchbase] to build an application that stores data in and retrieves it from http://www.couchbase.com/[Couchbase], a document-based database.
 :imagesdir: images
 
